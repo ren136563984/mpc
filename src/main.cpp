@@ -1,13 +1,15 @@
 #include <math.h>
 #include <uWS/uWS.h>
+
 #include <chrono>
 #include <iostream>
 #include <thread>
 #include <vector>
-#include "Eigen-3.3/Eigen/Core"
-#include "Eigen-3.3/Eigen/QR"
+
+#include "Eigen/Core"
+#include "Eigen/QR"
 #include "MPC.h"
-#include "json.hpp"
+#include "nlohmann/json.hpp"
 
 const int PORT = 4567;
 
@@ -31,8 +33,10 @@ string hasData(string s) {
 }
 
 // Fit a polynomial.
-// Adapted from https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
-Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals, int order) {
+// Adapted from
+// https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
+Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
+                        int order) {
   assert(xvals.size() == yvals.size());
   assert(order >= 1 && order <= xvals.size() - 1);
   Eigen::MatrixXd A(xvals.size(), order + 1);
@@ -58,19 +62,19 @@ int main() {
   // MPC is initialized here!
   MPC mpc;
 
-  h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+                     uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
     string sdata = string(data).substr(0, length);
-    //cout << sdata << endl;
+    // cout << sdata << endl;
     if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') {
       string s = hasData(sdata);
       if (s != "") {
         auto j = json::parse(s);
         string event = j[0].get<string>();
         if (event == "telemetry") {
-
           //**************************************************************
           //* GET THE CURRENT STATE
           //**************************************************************
@@ -93,8 +97,7 @@ int main() {
           Eigen::VectorXd waypoints_xs(NUMBER_OF_WAYPOINTS);
           Eigen::VectorXd waypoints_ys(NUMBER_OF_WAYPOINTS);
 
-          for(int i = 0; i < NUMBER_OF_WAYPOINTS; ++i) {
-
+          for (int i = 0; i < NUMBER_OF_WAYPOINTS; ++i) {
             const double dx = points_xs[i] - px;
             const double dy = points_ys[i] - py;
 
@@ -116,9 +119,9 @@ int main() {
           const double D = 5.0;
 
           for (int i = 0; i < N; ++i) {
-
             const double dx = D * i;
-            const double dy = K[3] * dx * dx * dx + K[2] * dx * dx + K[1] * dx + K[0];
+            const double dy =
+                K[3] * dx * dx * dx + K[2] * dx * dx + K[1] * dx + K[0];
 
             next_xs[i] = dx;
             next_ys[i] = dy;
@@ -132,9 +135,9 @@ int main() {
           // f = K[3] * px0 * px0 + px0 + K[2] * px0 * px0 + K[1] * px0 + K[0];
           const double cte = K[0];
 
-          // current heading error epsi is the tangent to the road curve at px = 0.0
-          // epsi = arctan(f') where f' is the derivative of the fitted polynomial
-          // f' = 3.0 * K[3] * px0 * px0 + 2.0 * K[2] * px0 + K[1]
+          // current heading error epsi is the tangent to the road curve at px =
+          // 0.0 epsi = arctan(f') where f' is the derivative of the fitted
+          // polynomial f' = 3.0 * K[3] * px0 * px0 + 2.0 * K[2] * px0 + K[1]
           const double epsi = -atan(K[1]);
 
           //**************************************************************
@@ -144,14 +147,13 @@ int main() {
           const double dt = 0.1;
           const double Lf = 2.67;
 
-          // current state must be in vehicle coordinates with the delay factored in
-          // kinematic model is at play here
-          // note that at current state at vehicle coordinates:
-          // px, py, psi = 0.0, 0.0, 0.0
-          // note that in vehicle coordinates it is going straight ahead the x-axis
-          // which means position in vehicle's y-axis does not change
-          // the steering angle is negative the given value as we have
-          // as recall that during transformation we rotated all waypoints by -psi
+          // current state must be in vehicle coordinates with the delay
+          // factored in kinematic model is at play here note that at current
+          // state at vehicle coordinates: px, py, psi = 0.0, 0.0, 0.0 note that
+          // in vehicle coordinates it is going straight ahead the x-axis which
+          // means position in vehicle's y-axis does not change the steering
+          // angle is negative the given value as we have as recall that during
+          // transformation we rotated all waypoints by -psi
           const double current_px = 0.0 + v * dt;
           const double current_py = 0.0;
           const double current_psi = 0.0 + v * (-delta) / Lf * dt;
@@ -161,14 +163,15 @@ int main() {
 
           const int NUMBER_OF_STATES = 6;
           Eigen::VectorXd state(NUMBER_OF_STATES);
-          state << current_px, current_py, current_psi, current_v, current_cte, current_epsi;
+          state << current_px, current_py, current_psi, current_v, current_cte,
+              current_epsi;
 
           //**************************************************************
           //* DETERMINE NEXT COURSE OF ACTION AND PREDICTED STATES
           //* USING MODEL PREDICTIVE CONTROL
           //**************************************************************
           mpc.solve(state, K);
-          //cout << setw(20) << mpc.steer << setw(20) << mpc.throttle << endl;
+          // cout << setw(20) << mpc.steer << setw(20) << mpc.throttle << endl;
 
           json msgJson;
           msgJson["steering_angle"] = mpc.steer;
@@ -181,7 +184,7 @@ int main() {
           msgJson["next_y"] = next_ys;
 
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-          //std::cout << msg << std::endl;
+          // std::cout << msg << std::endl;
 
           // Latency
           this_thread::sleep_for(chrono::milliseconds(100));
@@ -193,7 +196,8 @@ int main() {
     }
   });
 
-  // We don't need this since we're not using HTTP but if it's removed the program doesn't compile :-(
+  // We don't need this since we're not using HTTP but if it's removed the
+  // program doesn't compile :-(
   h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data,
                      size_t, size_t) {
     const std::string s = "<h1>Hello world!</h1>";
@@ -209,7 +213,8 @@ int main() {
     std::cout << "Connected!!!" << std::endl;
   });
 
-  h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code, char *message, size_t length) {
+  h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code,
+                         char *message, size_t length) {
     ws.close();
     std::cout << "Disconnected" << std::endl;
   });

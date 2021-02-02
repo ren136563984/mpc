@@ -11,12 +11,12 @@ set(CMAKE_CXX_FLAGS, "${CXX_FLAGS}")
 
 set(sources src/MPC.cpp src/main.cpp)
 
-include_directories(src/Eigen-3.3)
-
-if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-
+find_package(Eigen3)
+INCLUDE_DIRECTORIES(${EIGEN3_INCLUDE_DIR})
 include_directories(/usr/local/include)
 link_directories(/usr/local/lib)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
 include_directories(/usr/local/opt/openssl/include)
 link_directories(/usr/local/opt/openssl/lib)
 link_directories(/usr/local/Cellar/libuv/1.11.0/lib)
