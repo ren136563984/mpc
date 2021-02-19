@@ -4,119 +4,115 @@ using CppAD::AD;
 using namespace std;
 
 class FG_eval {
+ public:
+  typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
+  Eigen::VectorXd K;  // Fitted road curve polynomial coefficients
 
-  public:
+  FG_eval(Eigen::VectorXd Kin) : K(Kin) {}
 
-    typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
-    Eigen::VectorXd K; // Fitted road curve polynomial coefficients
+  void operator()(ADvector& fg, const ADvector& x) {
+    // fg a vector containing the cost and all constraints
+    // x is a vector containing all states and actuations for N "lookahead"
+    // states and actuations.
 
-    FG_eval(Eigen::VectorXd Kin) : K(Kin) {}
+    //*********************************************************
+    //* COST DEFINED HERE
+    //*********************************************************
 
-    void operator()(ADvector& fg, const ADvector& x) {
-      // fg a vector containing the cost and all constraints
-      // x is a vector containing all states and actuations for N "lookahead" states and actuations.
+    fg[0] = 0.0;
 
-      //*********************************************************
-      //* COST DEFINED HERE
-      //*********************************************************
+    for (int i = 0; i < N; ++i) {
+      const auto cte = x[ID_FIRST_cte + i];
+      const auto epsi = x[ID_FIRST_epsi + i];
+      const auto v = x[ID_FIRST_v + i] - VELOCITY_MAX;
 
-      fg[0] = 0.0;
-
-      for (int i = 0; i < N; ++i) {
-
-        const auto cte = x[ID_FIRST_cte + i];
-        const auto epsi = x[ID_FIRST_epsi + i];
-        const auto v = x[ID_FIRST_v + i] - VELOCITY_MAX;
-
-        fg[0] += (W_cte * cte * cte + W_epsi * epsi * epsi + W_v * v * v);
-      }
-
-      for (int i = 0; i < N - 1; ++i) {
-
-        const auto delta = x[ID_FIRST_delta + i];
-        const auto a = x[ID_FIRST_a + i];
-
-        fg[0] += (W_delta * delta * delta + W_a * a * a);
-      }
-
-      for (int i = 0; i < N - 2; ++i) {
-
-        const auto ddelta = x[ID_FIRST_delta + i + 1] - x[ID_FIRST_delta + i];
-        const auto da = x[ID_FIRST_a + i + 1] - x[ID_FIRST_a + i];
-
-        fg[0] += (W_ddelta * ddelta * ddelta + W_da * da * da);
-      }
-
-      //*********************************************************
-      //* CONSTRAINTS DEFINED HERE
-      //*********************************************************
-
-      // given state does not vary
-      fg[ID_FIRST_px + 1] = x[ID_FIRST_px];
-      fg[ID_FIRST_py + 1] = x[ID_FIRST_py];
-      fg[ID_FIRST_psi + 1] = x[ID_FIRST_psi];
-      fg[ID_FIRST_v + 1] = x[ID_FIRST_v];
-      fg[ID_FIRST_cte + 1] = x[ID_FIRST_cte];
-      fg[ID_FIRST_epsi + 1] = x[ID_FIRST_epsi];
-
-      // constraints based on our kinematic model
-      for (int i = 0; i < N - 1; ++i) {
-
-        // where the current state variables of interest are stored
-        // stored for readability
-        const int ID_CURRENT_px = ID_FIRST_px + i;
-        const int ID_CURRENT_py = ID_FIRST_py + i;
-        const int ID_CURRENT_psi = ID_FIRST_psi + i;
-        const int ID_CURRENT_v = ID_FIRST_v + i;
-        const int ID_CURRENT_cte = ID_FIRST_cte + i;
-        const int ID_CURRENT_epsi = ID_FIRST_epsi + i;
-        const int ID_CURRENT_delta = ID_FIRST_delta + i;
-        const int ID_CURRENT_a = ID_FIRST_a + i;
-
-        //current state and actuations
-        const auto px0 = x[ID_CURRENT_px];
-        const auto py0 = x[ID_CURRENT_py];
-        const auto psi0 = x[ID_CURRENT_psi];
-        const auto v0 = x[ID_CURRENT_v];
-        const auto cte0 = x[ID_CURRENT_cte];
-        const auto epsi0 = x[ID_CURRENT_epsi];
-        const auto delta0 = x[ID_CURRENT_delta];
-        const auto a0 = x[ID_CURRENT_a];
-
-        // next state
-        const auto px1 = x[ID_CURRENT_px + 1];
-        const auto py1 = x[ID_CURRENT_py + 1];
-        const auto psi1 = x[ID_CURRENT_psi + 1];
-        const auto v1 = x[ID_CURRENT_v + 1];
-        const auto cte1 = x[ID_CURRENT_cte + 1];
-        const auto epsi1 = x[ID_CURRENT_epsi + 1];
-
-        // desired py and psi
-        const auto py_desired = K[3] * px0 * px0 * px0 + K[2] * px0 * px0 + K[1] * px0 + K[0];
-        const auto psi_desired = CppAD::atan(3.0 * K[3] * px0 * px0 + 2.0 * K[2] * px0 + K[1]);
-
-        // relationship of current state + actuations and next state
-        // based on our kinematic model
-        const auto px1_f = px0 + v0 * CppAD::cos(psi0) * dt;
-        const auto py1_f = py0 + v0 * CppAD::sin(psi0) * dt;
-        const auto psi1_f = psi0 + v0 * (-delta0) / Lf * dt;
-        const auto v1_f = v0 + a0 * dt;
-        const auto cte1_f = py_desired - py0 + v0 * CppAD::sin(epsi0) * dt;
-        const auto epsi1_f = psi0 - psi_desired + v0 * (-delta0) / Lf * dt;
-
-        // store the constraint expression of two consecutive states
-        fg[ID_CURRENT_px + 2] = px1 - px1_f;
-        fg[ID_CURRENT_py + 2] = py1 - py1_f;
-        fg[ID_CURRENT_psi + 2] = psi1 - psi1_f;
-        fg[ID_CURRENT_v + 2] = v1 - v1_f;
-        fg[ID_CURRENT_cte + 2] = cte1 - cte1_f;
-        fg[ID_CURRENT_epsi + 2] = epsi1 - epsi1_f;
-      }
+      fg[0] += (W_cte * cte * cte + W_epsi * epsi * epsi + W_v * v * v);
     }
+
+    for (int i = 0; i < N - 1; ++i) {
+      const auto delta = x[ID_FIRST_delta + i];
+      const auto a = x[ID_FIRST_a + i];
+
+      fg[0] += (W_delta * delta * delta + W_a * a * a);
+    }
+
+    for (int i = 0; i < N - 2; ++i) {
+      const auto ddelta = x[ID_FIRST_delta + i + 1] - x[ID_FIRST_delta + i];
+      const auto da = x[ID_FIRST_a + i + 1] - x[ID_FIRST_a + i];
+
+      fg[0] += (W_ddelta * ddelta * ddelta + W_da * da * da);
+    }
+
+    //*********************************************************
+    //* CONSTRAINTS DEFINED HERE
+    //*********************************************************
+
+    // given state does not vary
+    fg[ID_FIRST_px + 1] = x[ID_FIRST_px];
+    fg[ID_FIRST_py + 1] = x[ID_FIRST_py];
+    fg[ID_FIRST_psi + 1] = x[ID_FIRST_psi];
+    fg[ID_FIRST_v + 1] = x[ID_FIRST_v];
+    fg[ID_FIRST_cte + 1] = x[ID_FIRST_cte];
+    fg[ID_FIRST_epsi + 1] = x[ID_FIRST_epsi];
+
+    // constraints based on our kinematic model
+    for (int i = 0; i < N - 1; ++i) {
+      // where the current state variables of interest are stored
+      // stored for readability
+      const int ID_CURRENT_px = ID_FIRST_px + i;
+      const int ID_CURRENT_py = ID_FIRST_py + i;
+      const int ID_CURRENT_psi = ID_FIRST_psi + i;
+      const int ID_CURRENT_v = ID_FIRST_v + i;
+      const int ID_CURRENT_cte = ID_FIRST_cte + i;
+      const int ID_CURRENT_epsi = ID_FIRST_epsi + i;
+      const int ID_CURRENT_delta = ID_FIRST_delta + i;
+      const int ID_CURRENT_a = ID_FIRST_a + i;
+
+      // current state and actuations
+      const auto px0 = x[ID_CURRENT_px];
+      const auto py0 = x[ID_CURRENT_py];
+      const auto psi0 = x[ID_CURRENT_psi];
+      const auto v0 = x[ID_CURRENT_v];
+      const auto cte0 = x[ID_CURRENT_cte];
+      const auto epsi0 = x[ID_CURRENT_epsi];
+      const auto delta0 = x[ID_CURRENT_delta];
+      const auto a0 = x[ID_CURRENT_a];
+
+      // next state
+      const auto px1 = x[ID_CURRENT_px + 1];
+      const auto py1 = x[ID_CURRENT_py + 1];
+      const auto psi1 = x[ID_CURRENT_psi + 1];
+      const auto v1 = x[ID_CURRENT_v + 1];
+      const auto cte1 = x[ID_CURRENT_cte + 1];
+      const auto epsi1 = x[ID_CURRENT_epsi + 1];
+
+      // desired py and psi
+      const auto py_desired =
+          K[3] * px0 * px0 * px0 + K[2] * px0 * px0 + K[1] * px0 + K[0];
+      const auto psi_desired =
+          CppAD::atan(3.0 * K[3] * px0 * px0 + 2.0 * K[2] * px0 + K[1]);
+
+      // relationship of current state + actuations and next state
+      // based on our kinematic model
+      const auto px1_f = px0 + v0 * CppAD::cos(psi0) * dt;
+      const auto py1_f = py0 + v0 * CppAD::sin(psi0) * dt;
+      const auto psi1_f = psi0 + v0 * (-delta0) / Lf * dt;
+      const auto v1_f = v0 + a0 * dt;
+      const auto cte1_f = py_desired - py0 + v0 * CppAD::sin(epsi0) * dt;
+      const auto epsi1_f = psi0 - psi_desired + v0 * (-delta0) / Lf * dt;
+
+      // store the constraint expression of two consecutive states
+      fg[ID_CURRENT_px + 2] = px1 - px1_f;
+      fg[ID_CURRENT_py + 2] = py1 - py1_f;
+      fg[ID_CURRENT_psi + 2] = psi1 - psi1_f;
+      fg[ID_CURRENT_v + 2] = v1 - v1_f;
+      fg[ID_CURRENT_cte + 2] = cte1 - cte1_f;
+      fg[ID_CURRENT_epsi + 2] = epsi1 - epsi1_f;
+    }
+  }
 };
 
 MPC::MPC() {
-
   //**************************************************************
   //* SET INITIAL VALUES OF VARIABLES
   //**************************************************************
@@ -142,7 +138,8 @@ MPC::MPC() {
     this->x_upperbound[i] = 1.0e10;
   }
 
-  // all actuation inputs (steering, acceleration) should have values between [-1, 1]
+  // all actuation inputs (steering, acceleration) should have values between
+  // [-1, 1]
   for (int i = ID_FIRST_delta; i < ID_FIRST_a; ++i) {
     this->x_lowerbound[i] = -0.75;
     this->x_upperbound[i] = 0.75;
@@ -174,7 +171,6 @@ MPC::MPC() {
 MPC::~MPC() {}
 
 void MPC::solve(Eigen::VectorXd state, Eigen::VectorXd K) {
-
   const double px = state[0];
   const double py = state[1];
   const double psi = state[2];
@@ -225,15 +221,9 @@ void MPC::solve(Eigen::VectorXd state, Eigen::VectorXd K) {
   CppAD::ipopt::solve_result<Dvector> solution;
 
   // solve the problem
-  CppAD::ipopt::solve<Dvector, FG_eval>(
-      options,
-      x,
-      x_lowerbound,
-      x_upperbound,
-      g_lowerbound,
-      g_upperbound,
-      fg_eval,
-      solution);
+  CppAD::ipopt::solve<Dvector, FG_eval>(options, x, x_lowerbound, x_upperbound,
+                                        g_lowerbound, g_upperbound, fg_eval,
+                                        solution);
 
   // comment out the lines below to debug!
   /*
@@ -260,7 +250,6 @@ void MPC::solve(Eigen::VectorXd state, Eigen::VectorXd K) {
   this->future_ys = {};
 
   for (int i = 0; i < N; ++i) {
-
     const double px = solution.x[ID_FIRST_px + i];
     const double py = solution.x[ID_FIRST_py + i];
 

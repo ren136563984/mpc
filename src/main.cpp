@@ -36,7 +36,7 @@ string hasData(string s) {
 // Adapted from
 // https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
 Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
-                        int order) {
+                        int order) {  //拟合函数
   assert(xvals.size() == yvals.size());
   assert(order >= 1 && order <= xvals.size() - 1);
   Eigen::MatrixXd A(xvals.size(), order + 1);
@@ -59,7 +59,7 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
 int main() {
   uWS::Hub h;
 
-  // MPC is initialized here!
+  //
   MPC mpc;
 
   h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
@@ -76,13 +76,13 @@ int main() {
         string event = j[0].get<string>();
         if (event == "telemetry") {
           //**************************************************************
-          //* GET THE CURRENT STATE
+          //* 获取当前状态
           //**************************************************************
 
-          // j[1] is the data JSON object
-          std::vector<double> points_xs = j[1]["ptsx"];
-          std::vector<double> points_ys = j[1]["ptsy"];
-
+          // j[1]数据体对象
+          std::vector<double> points_xs = j[1]["ptsx"];  // x点序列
+          std::vector<double> points_ys = j[1]["ptsy"];  // y点序列
+          //接收到的车当前状态和控制量
           const double px = j[1]["x"];
           const double py = j[1]["y"];
           const double psi = j[1]["psi"];
@@ -91,7 +91,7 @@ int main() {
           const double a = j[1]["throttle"];
 
           //**************************************************************
-          //* CONVERT WAYPOINTS TO VEHICLE SPACE as VectorXd from GLOBAL SPACE
+          //* 全局空间转换为车当前空间
           //**************************************************************
           const int NUMBER_OF_WAYPOINTS = points_xs.size();
           Eigen::VectorXd waypoints_xs(NUMBER_OF_WAYPOINTS);
@@ -106,13 +106,13 @@ int main() {
           }
 
           //**************************************************************
-          //* FIT POLYNOMAL
+          //* 拟合多项式
           //**************************************************************
           const int ORDER = 3;
-          auto K = polyfit(waypoints_xs, waypoints_ys, ORDER);
+          auto K = polyfit(waypoints_xs, waypoints_ys, ORDER);  //曲率系数
 
           //**************************************************************
-          //* GET POINTS TO DISPLAY FROM OUR FITTED POLYNOMIAL (ROAD CURVE)
+          //* 从拟合多项式（道路曲线）获取要显示的点
           //**************************************************************
           std::vector<double> next_xs(N);
           std::vector<double> next_ys(N);
@@ -128,32 +128,28 @@ int main() {
           }
 
           //**************************************************************
-          //* GENERATE CURRENT ERROR ESTIMATES (cte, epsi)
+          //* 生成当前错误估计 (cte, epsi)
           //**************************************************************
 
-          // current CTE is fitted polynomial (road curve) evaluated at px = 0.0
+          // 当前位置误差CTE是拟合多项式（道路曲线），px=0.0
           // f = K[3] * px0 * px0 + px0 + K[2] * px0 * px0 + K[1] * px0 + K[0];
           const double cte = K[0];
 
-          // current heading error epsi is the tangent to the road curve at px =
-          // 0.0 epsi = arctan(f') where f' is the derivative of the fitted
+          // 当前航向角误差epsi是px=0.0时与道路曲线的切线
+          // epsi = arctan(f') where f' is the derivative of the fitted
           // polynomial f' = 3.0 * K[3] * px0 * px0 + 2.0 * K[2] * px0 + K[1]
           const double epsi = -atan(K[1]);
 
           //**************************************************************
-          //* GET THE CURRENT DELAYED STATE
+          //* 获取当前延迟状态
           //**************************************************************
 
           const double dt = 0.1;
           const double Lf = 2.67;
 
-          // current state must be in vehicle coordinates with the delay
-          // factored in kinematic model is at play here note that at current
-          // state at vehicle coordinates: px, py, psi = 0.0, 0.0, 0.0 note that
-          // in vehicle coordinates it is going straight ahead the x-axis which
-          // means position in vehicle's y-axis does not change the steering
-          // angle is negative the given value as we have as recall that during
-          // transformation we rotated all waypoints by -psi
+          // 当前状态必须是车辆坐标系，px, py, psi = 0.0, 0.0, 0.0
+          // 延迟造成车辆向前直线行驶，只改变x，不改变y和psi
+          // 在转换过程中，我们把所有的路径点旋转了-psi，因此打角是负值
           const double current_px = 0.0 + v * dt;
           const double current_py = 0.0;
           const double current_psi = 0.0 + v * (-delta) / Lf * dt;
@@ -167,12 +163,11 @@ int main() {
               current_epsi;
 
           //**************************************************************
-          //* DETERMINE NEXT COURSE OF ACTION AND PREDICTED STATES
-          //* USING MODEL PREDICTIVE CONTROL
+          //* 使用MPC确定下一步控制方案和预测状态
           //**************************************************************
           mpc.solve(state, K);
           // cout << setw(20) << mpc.steer << setw(20) << mpc.throttle << endl;
-
+          //准备数据发送
           json msgJson;
           msgJson["steering_angle"] = mpc.steer;
           msgJson["throttle"] = mpc.throttle;
@@ -186,7 +181,7 @@ int main() {
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
           // std::cout << msg << std::endl;
 
-          // Latency
+          // 延迟仿真
           this_thread::sleep_for(chrono::milliseconds(100));
 
           // sent do simulator
